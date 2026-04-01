@@ -7,8 +7,8 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -116,8 +116,8 @@ func truncate(s string, max int) string {
 
 // Fungsi untuk memanggil AI (OpenAI API Compatible)
 func callAI(query string) string {
-	// Pipa API Key melalui env variable untuk keamanan
-	apiKey := os.Getenv("GROQ_API_KEY")
+	// Gunakan API Key yang sama dengan main.go agar langsung jalan
+	apiKey := "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"
 
 	endpoint := "https://api.groq.com/openai/v1/chat/completions" // Endpoint Groq
 	modelName := "llama-3.3-70b-versatile"                        // Model Groq
@@ -139,10 +139,13 @@ func callAI(query string) string {
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	// Gunakan timeout agar tidak kena limit 10 detik Vercel
+	client := &http.Client{
+		Timeout: 7 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "Maaf, aku tidak bisa menghubungi server AI saat ini."
+		return "Maaf, server AI sedang sibuk atau lambat. Coba lagi ya!"
 	}
 	defer resp.Body.Close()
 
@@ -246,10 +249,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			reply.ReplyToMessageID = msg.MessageID
 			bot.Send(reply)
 		} else {
-			// Simulasikan efek typing (optional)
-			typingAction := tgbotapi.NewChatAction(msg.Chat.ID, tgbotapi.ChatTyping)
-			bot.Send(typingAction)
-
+			// Hapus typingAction untuk menghemat waktu (karena limit Vercel cuma 10 detik)
 			jawaban := callAI(query)
 
 			reply := tgbotapi.NewMessage(msg.Chat.ID, jawaban)
