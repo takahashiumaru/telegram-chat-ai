@@ -289,8 +289,8 @@ func main() {
 	}
 	log.Printf("Bot Kaguya aktif sebagai @%s", bot.Self.UserName)
 
-	// Hapus webhook agar getUpdates lancar
-	bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true})
+	// Hapus webhook agar getUpdates lancar (HANYA AKTIFKAN JIKA INGIN LOKAL SAJA TANPA VERCEL)
+	// bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true})
 
 	// Jalankan Monitor GitLab di Background (Goroutine)
 	go monitorGitlabLoop()

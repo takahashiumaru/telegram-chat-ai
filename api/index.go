@@ -63,6 +63,27 @@ var allowedGroupIDs = map[int64]struct{}{
 	-1003859941008: {},
 }
 
+func mentionInEntities(msg *tgbotapi.Message, aliases []string) bool {
+	if msg == nil || len(msg.Entities) == 0 {
+		return false
+	}
+	for _, ent := range msg.Entities {
+		if ent.Type != "mention" {
+			continue
+		}
+		if ent.Offset < 0 || ent.Offset+ent.Length > len(msg.Text) {
+			continue
+		}
+		mention := strings.ToLower(msg.Text[ent.Offset : ent.Offset+ent.Length])
+		for _, a := range aliases {
+			if mention == a {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Handler is the main entry point for Vercel Serverless Function
 func Handler(w http.ResponseWriter, r *http.Request) {
 	// Inisialisasi bot global sekali
@@ -72,6 +93,19 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "init bot error", http.StatusInternalServerError)
 			return
 		}
+	}
+
+	// Setup Helper: Kunjungi URL https://domain-mu.vercel.app/?setup=true untuk mendaftarkan bot.
+	if r.URL.Query().Get("setup") == "true" {
+		webhookURL := "https://" + r.Host + "/"
+		config, _ := tgbotapi.NewWebhook(webhookURL)
+		_, err := bot.Request(config)
+		if err != nil {
+			fmt.Fprintf(w, "Setup Error: %v", err)
+			return
+		}
+		fmt.Fprintf(w, "Setup Success! Webhook set to: %s", webhookURL)
+		return
 	}
 
 	body, err := io.ReadAll(r.Body)
@@ -170,7 +204,7 @@ func handleTelegramMessage(msg *tgbotapi.Message) {
 
 	var query string
 	isAskCommand := false
-	hasAlias := containsAliasFold(lowerText, mentionAliasesLower) || (msg.ReplyToMessage != nil && msg.ReplyToMessage.From.ID == bot.Self.ID)
+	hasAlias := containsAliasFold(lowerText, mentionAliasesLower) || mentionInEntities(msg, mentionAliasesLower) || (msg.ReplyToMessage != nil && msg.ReplyToMessage.From.ID == bot.Self.ID)
 
 	// Deteksi /ask atau mention
 	if payload, ok := parseAskCommand(text, mentionAliasesLower); ok {
