@@ -166,6 +166,7 @@ func callAI(query string) string {
 var allowedGroupIDs = map[int64]struct{}{
 	// Isi dengan ID grup yang diizinkan. Kosongkan untuk izinkan semua.
 	-1003521971868: {},
+	-1003859941008: {},
 }
 
 func main() {
