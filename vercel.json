@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "buildCommand": "go build -o /tmp/main ./main.go",
+  "installCommand": "go mod download",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ]
+}
