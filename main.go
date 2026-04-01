@@ -8,11 +8,42 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// Struktur data untuk OpenAI-Compatible API (Groq)
+// --- KONFIGURASI GITLAB ---
+type Project struct {
+	ID   string
+	Name string
+}
+
+var Projects = []Project{
+	{ID: "39997609", Name: "mf-micro-service-discount-proposal"},
+	{ID: "45966760", Name: "visit-flow-go"},
+}
+
+const (
+	GitlabToken  = "glpat-jo57tfUU5LsuIEFc_G4DGmM6MQpvOjEKdTo3NHpxbg8.01.170yd21nc"
+	GitlabAPIURL = "https://gitlab.com/api/v4/projects/%s/pipelines?per_page=1"
+)
+
+// --- KONFIGURASI TELEGRAM ---
+const (
+	TelegramBotToken = "6293769087:AAHgRTAHAJj3yG6KC6dex3iNlYgUQjAJr0o"
+	TelegramChatID   = "1631339759" // ID Chat untuk Notifikasi GitLab
+)
+
+// --- STRUCT DATA ---
+
+type PipelineResponse []struct {
+	ID     int64  `json:"id"`
+	Status string `json:"status"`
+	Ref    string `json:"ref"`
+	WebURL string `json:"web_url"`
+}
+
 type AIRequest struct {
 	Model    string      `json:"model"`
 	Messages []AIMessage `json:"messages"`
@@ -29,7 +60,16 @@ type AIResponse struct {
 	} `json:"choices"`
 }
 
-// containsAliasFold checks if any alias appears (case-insensitive) in text.
+// Map untuk melacak status terakhir per project ID (GitLab)
+var lastReported = make(map[string]struct {
+	ID     int64
+	Status string
+})
+
+var bot *tgbotapi.BotAPI
+
+// --- FUNGSI AI & UTILS ---
+
 func containsAliasFold(text string, aliases []string) bool {
 	for _, a := range aliases {
 		if strings.Contains(text, a) {
@@ -39,7 +79,6 @@ func containsAliasFold(text string, aliases []string) bool {
 	return false
 }
 
-// mentionInEntities checks message entities for mentions matching aliases.
 func mentionInEntities(msg *tgbotapi.Message, aliases []string) bool {
 	if msg == nil || len(msg.Entities) == 0 {
 		return false
@@ -61,7 +100,6 @@ func mentionInEntities(msg *tgbotapi.Message, aliases []string) bool {
 	return false
 }
 
-// removePrefixFold trims prefix in a case-insensitive manner if present.
 func removePrefixFold(s, prefix string) string {
 	if len(s) < len(prefix) {
 		return s
@@ -72,7 +110,6 @@ func removePrefixFold(s, prefix string) string {
 	return s
 }
 
-// dropMentions removes any word that equals a mention (case-insensitive).
 func dropMentions(text string, mentions ...string) string {
 	fields := strings.Fields(text)
 	out := make([]string, 0, len(fields))
@@ -91,7 +128,6 @@ func dropMentions(text string, mentions ...string) string {
 	return strings.Join(out, " ")
 }
 
-// parseAskCommand returns payload if message starts with /ask or ask (case-insensitive).
 func parseAskCommand(text string, aliases []string) (string, bool) {
 	lower := strings.ToLower(text)
 	for _, cmd := range []string{"/ask", "ask"} {
@@ -113,15 +149,10 @@ func truncate(s string, max int) string {
 	return s[:max] + "..."
 }
 
-// Fungsi untuk memanggil AI (OpenAI API Compatible)
 func callAI(query string) string {
 	apiKey := "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"
-	if apiKey == "" {
-		return "Maaf, GROQ_API_KEY belum di-set."
-	}
-
-	endpoint := "https://api.groq.com/openai/v1/chat/completions" // Endpoint Groq
-	modelName := "llama-3.3-70b-versatile"                        // Model Groq
+	endpoint := "https://api.groq.com/openai/v1/chat/completions"
+	modelName := "llama-3.3-70b-versatile"
 
 	reqBody := AIRequest{
 		Model: modelName,
@@ -140,7 +171,7 @@ func callAI(query string) string {
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "Maaf, aku tidak bisa menghubungi server AI saat ini."
@@ -148,88 +179,157 @@ func callAI(query string) string {
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Sprintf("AI error (%d): %s", resp.StatusCode, truncate(string(body), 400))
 	}
 
 	var aiResp AIResponse
 	if err := json.Unmarshal(body, &aiResp); err != nil || len(aiResp.Choices) == 0 || aiResp.Choices[0].Message.Content == "" {
-		return fmt.Sprintf("AI parse error: %v | body: %s", err, truncate(string(body), 400))
+		return "Maaf, terjadi kesalahan saat memproses jawaban AI."
 	}
 
 	return aiResp.Choices[0].Message.Content
 }
 
-// Only these group IDs can use the bot; leave empty to allow all groups.
-// Replace the example with your actual group IDs (negative IDs for supergroups).
+// --- FUNGSI MONITOR GITLAB ---
+
+func checkGitlabPipeline(project Project) {
+	url := fmt.Sprintf(GitlabAPIURL, project.ID)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Add("PRIVATE-TOKEN", GitlabToken)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[%s] Error HTTP: %v", project.Name, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return
+	}
+
+	var pipelines PipelineResponse
+	if err := json.NewDecoder(resp.Body).Decode(&pipelines); err != nil {
+		return
+	}
+
+	if len(pipelines) > 0 {
+		latestPipeline := pipelines[0]
+		last := lastReported[project.ID]
+
+		isNewId := (latestPipeline.ID != last.ID)
+		isNewStatus := (latestPipeline.Status != last.Status)
+
+		if (isNewId || isNewStatus) && (latestPipeline.Status == "success" || latestPipeline.Status == "failed" || latestPipeline.Status == "running") {
+			var statusIcon string
+			switch latestPipeline.Status {
+			case "success":
+				statusIcon = "✅"
+			case "failed":
+				statusIcon = "❌"
+			case "running":
+				statusIcon = "⏳"
+			default:
+				statusIcon = "🔄"
+			}
+
+			msgText := fmt.Sprintf("%s <b>Deploy Update!</b>\n\n<b>Repo:</b> %s\n<b>Pipeline ID:</b> %d\n<b>Branch:</b> %s\n<b>Status:</b> %s\n\n🔗 <a href=\"%s\">Buka GitLab Pipeline</a>",
+				statusIcon, project.Name, latestPipeline.ID, latestPipeline.Ref, latestPipeline.Status, latestPipeline.WebURL)
+
+			log.Printf("[%s] Mengirim notifikasi %s...", project.Name, latestPipeline.Status)
+			
+			// Kirim ke Telegram
+			chatID, _ := time.ParseDuration("0s") // dummy to use ChatID correctly
+			_ = chatID
+			
+			// Konversi string ChatID ke int64
+			var targetChatID int64
+			fmt.Sscanf(TelegramChatID, "%d", &targetChatID)
+			
+			notification := tgbotapi.NewMessage(targetChatID, msgText)
+			notification.ParseMode = "HTML"
+			bot.Send(notification)
+
+			lastReported[project.ID] = struct {
+				ID     int64
+				Status string
+			}{ID: latestPipeline.ID, Status: latestPipeline.Status}
+		} else if isNewStatus {
+			lastReported[project.ID] = struct {
+				ID     int64
+				Status string
+			}{ID: latestPipeline.ID, Status: latestPipeline.Status}
+		}
+	}
+}
+
+func monitorGitlabLoop() {
+	for {
+		for _, p := range Projects {
+			checkGitlabPipeline(p)
+		}
+		time.Sleep(30 * time.Second)
+	}
+}
+
+// --- MAIN ENTRY POINT ---
+
 var allowedGroupIDs = map[int64]struct{}{
-	// Isi dengan ID grup yang diizinkan. Kosongkan untuk izinkan semua.
 	-1003521971868: {},
 	-1003859941008: {},
 }
 
 func main() {
-	token := "6293769087:AAHgRTAHAJj3yG6KC6dex3iNlYgUQjAJr0o"
-	if token == "" {
-		log.Fatal("set TELEGRAM_BOT_TOKEN dulu")
-	}
-
-	bot, err := tgbotapi.NewBotAPI(token)
+	var err error
+	bot, err = tgbotapi.NewBotAPI(TelegramBotToken)
 	if err != nil {
 		log.Fatalf("init bot: %v", err)
 	}
-	log.Printf("Bot aktif sebagai @%s", bot.Self.UserName)
+	log.Printf("Bot Kaguya aktif sebagai @%s", bot.Self.UserName)
 
-	// Pastikan tidak ada webhook aktif yang membuat getUpdates conflict
-	if _, err := bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true}); err != nil {
-		log.Fatalf("hapus webhook: %v", err)
-	}
+	// Hapus webhook agar getUpdates lancar
+	bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true})
 
+	// Jalankan Monitor GitLab di Background (Goroutine)
+	go monitorGitlabLoop()
+
+	// Jalankan Listener Chat Telegram (AI Bot)
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
-
 	updates := bot.GetUpdatesChan(u)
+
 	for update := range updates {
 		if update.Message == nil {
 			continue
 		}
 
-		log.Printf("Menerima pesan dari tipe chat: %s, ID: %d, teks: %s", update.Message.Chat.Type, update.Message.Chat.ID, update.Message.Text)
-
-		// Hanya tanggapi grup/supergroup
-		if !update.Message.Chat.IsGroup() && !update.Message.Chat.IsSuperGroup() {
-			reply := tgbotapi.NewMessage(update.Message.Chat.ID, "Maaf, aku saat ini hanya ngobrol di grup/supergroup saja :)")
-			bot.Send(reply)
+		msg := update.Message
+		
+		// Filter Grup
+		if !msg.Chat.IsGroup() && !msg.Chat.IsSuperGroup() {
 			continue
 		}
-
-		// Batasi hanya grup yang diizinkan jika daftar tidak kosong
 		if len(allowedGroupIDs) > 0 {
-			if _, ok := allowedGroupIDs[update.Message.Chat.ID]; !ok {
+			if _, ok := allowedGroupIDs[msg.Chat.ID]; !ok {
 				continue
 			}
 		}
 
-		msg := update.Message
 		text := strings.TrimSpace(msg.Text)
 		lowerText := strings.ToLower(text)
-
 		botMention := "@" + bot.Self.UserName
 		mentionAliasesLower := []string{strings.ToLower(botMention), "@thiskaguyabot", "@ThisKaguyaBot"}
-		botNameLower := mentionAliasesLower[0]
 
 		var query string
 		isAskCommand := false
-
 		hasAlias := containsAliasFold(lowerText, mentionAliasesLower) || mentionInEntities(msg, mentionAliasesLower)
 
-		// /ask atau ask (opsional diikuti @bot) lalu pertanyaan
 		if payload, ok := parseAskCommand(text, mentionAliasesLower); ok {
 			query = payload
 			isAskCommand = true
 		} else if hasAlias {
-			// Mention bot langsung
 			query = strings.TrimSpace(dropMentions(text, mentionAliasesLower...))
 			isAskCommand = true
 		}
@@ -242,11 +342,7 @@ func main() {
 				continue
 			}
 
-			// Kasih efek "Typing..." (sedang mengetik) sambil menunggu balasan AI
-			typingAction := tgbotapi.NewChatAction(msg.Chat.ID, tgbotapi.ChatTyping)
-			bot.Send(typingAction)
-
-			// Memanggil AI
+			bot.Send(tgbotapi.NewChatAction(msg.Chat.ID, tgbotapi.ChatTyping))
 			jawaban := callAI(query)
 
 			reply := tgbotapi.NewMessage(msg.Chat.ID, jawaban)
@@ -257,8 +353,7 @@ func main() {
 			continue
 		}
 
-		switch {
-		case lowerText == "/ping" || lowerText == "/ping"+botNameLower:
+		if lowerText == "/ping" || lowerText == "/ping"+mentionAliasesLower[0] {
 			reply := tgbotapi.NewMessage(msg.Chat.ID, "Pong!")
 			reply.ReplyToMessageID = msg.MessageID
 			bot.Send(reply)
