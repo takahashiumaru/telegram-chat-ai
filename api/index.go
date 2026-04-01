@@ -118,7 +118,7 @@ func truncate(s string, max int) string {
 func callAI(query string) string {
 	// Pipa API Key melalui env variable untuk keamanan
 	apiKey := os.Getenv("GROQ_API_KEY")
-	
+
 	endpoint := "https://api.groq.com/openai/v1/chat/completions" // Endpoint Groq
 	modelName := "llama-3.3-70b-versatile"                        // Model Groq
 
@@ -160,24 +160,34 @@ func callAI(query string) string {
 	return aiResp.Choices[0].Message.Content
 }
 
+// Global instances for reuse across Warm invocations
+var (
+	bot     *tgbotapi.BotAPI
+	initErr error
+)
+
 // Only these group IDs can use the bot; leave empty to allow all groups.
 var allowedGroupIDs = map[int64]struct{}{
 	-1003521971868: {},
+	-1003859941008: {},
 }
 
 // Handler is the main entry point for Vercel Serverless Function
 func Handler(w http.ResponseWriter, r *http.Request) {
 	// Verifikasi token dari env
-	token := os.Getenv("TELEGRAM_BOT_TOKEN")
+	token := "6293769087:AAHgRTAHAJj3yG6KC6dex3iNlYgUQjAJr0o"
 	if token == "" {
 		http.Error(w, "TELEGRAM_BOT_TOKEN not configured", http.StatusInternalServerError)
 		return
 	}
 
-	bot, err := tgbotapi.NewBotAPI(token)
-	if err != nil {
-		http.Error(w, "init bot error", http.StatusInternalServerError)
-		return
+	// Inisialisasi bot global sekali (Reuse di Vercel Warm Start)
+	if bot == nil {
+		bot, initErr = tgbotapi.NewBotAPI(token)
+		if initErr != nil {
+			http.Error(w, "init bot error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Baca body dari Telegram update
@@ -214,7 +224,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	lowerText := strings.ToLower(text)
 
 	botMention := "@" + bot.Self.UserName
-	mentionAliasesLower := []string{strings.ToLower(botMention), "@thiskaguyabot"}
+	mentionAliasesLower := []string{strings.ToLower(botMention), "@thiskaguyabot", "@ThisKaguyaBot"}
 	botNameLower := mentionAliasesLower[0]
 
 	var query string

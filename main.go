@@ -216,7 +216,7 @@ func main() {
 		lowerText := strings.ToLower(text)
 
 		botMention := "@" + bot.Self.UserName
-		mentionAliasesLower := []string{strings.ToLower(botMention), "@thiskaguyabot"}
+		mentionAliasesLower := []string{strings.ToLower(botMention), "@thiskaguyabot", "@ThisKaguyaBot"}
 		botNameLower := mentionAliasesLower[0]
 
 		var query string
