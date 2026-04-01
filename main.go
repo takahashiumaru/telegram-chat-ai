@@ -23,6 +23,10 @@ type Project struct {
 var Projects = []Project{
 	{ID: "39997609", Name: "mf-micro-service-discount-proposal"},
 	{ID: "45966760", Name: "visit-flow-go"},
+	{ID: "59214445", Name: "visit-flow-presence"},
+	{ID: "46744032", Name: "visit-flow-api-gateway"},
+	{ID: "76428296", Name: "visit-flow-payroll"},
+	{ID: "46743800", Name: "visit-flow-survey-location-go"},
 }
 
 const (
@@ -250,10 +254,10 @@ func checkGitlabPipeline(project Project) {
 		timeSinceUpdate := time.Since(updatedAt)
 
 		// Hanya kirim jika baru (ID/Status berubah) DAN masih dalam jendela 30 menit
-		if (isNewId || isNewStatus) && 
-		   (latestPipeline.Status == "success" || latestPipeline.Status == "failed" || latestPipeline.Status == "running" || latestPipeline.Status == "pending") &&
-		   (timeSinceUpdate.Minutes() <= 30) {
-			
+		if (isNewId || isNewStatus) &&
+			(latestPipeline.Status == "success" || latestPipeline.Status == "failed" || latestPipeline.Status == "running" || latestPipeline.Status == "pending") &&
+			(timeSinceUpdate.Minutes() <= 30) {
+
 			var statusIcon string
 			switch latestPipeline.Status {
 			case "success":
@@ -272,10 +276,10 @@ func checkGitlabPipeline(project Project) {
 				statusIcon, project.Name, latestPipeline.ID, latestPipeline.Ref, latestPipeline.Status, latestPipeline.WebURL)
 
 			log.Printf("[%s] Mengirim notifikasi %s (ID: %d, Time: %v ago)...", project.Name, latestPipeline.Status, latestPipeline.ID, timeSinceUpdate)
-			
+
 			var targetChatID int64
 			fmt.Sscanf(TelegramChatID, "%d", &targetChatID)
-			
+
 			notification := tgbotapi.NewMessage(targetChatID, msgText)
 			notification.ParseMode = "HTML"
 			bot.Send(notification)
@@ -351,16 +355,9 @@ func main() {
 		}
 
 		msg := update.Message
-		
-		// Filter Grup
-		if !msg.Chat.IsGroup() && !msg.Chat.IsSuperGroup() {
-			continue
-		}
-		if len(allowedGroupIDs) > 0 {
-			if _, ok := allowedGroupIDs[msg.Chat.ID]; !ok {
-				continue
-			}
-		}
+
+		// Bot sekarang akan merespons di grup mana pun atau di chat pribadi langsung.
+		// Jika Anda ingin membatasi lagi nanti, silakan masukkan filter grup di sini.
 
 		text := strings.TrimSpace(msg.Text)
 		lowerText := strings.ToLower(text)
