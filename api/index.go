@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -53,10 +54,13 @@ type AIResponse struct {
 	} `json:"choices"`
 }
 
-// Global instances for reuse across Warm invocations
 var (
 	bot     *tgbotapi.BotAPI
 	initErr error
+	
+	// Cache dan Mutex untuk deduplikasi (Bertahan selama proses warm start)
+	sentCache = make(map[string]string) 
+	cacheMu   sync.Mutex
 )
 
 var allowedGroupIDs = map[int64]struct{}{
@@ -169,6 +173,16 @@ func handleGitlabWebhook(body []byte) {
 		return
 	}
 
+	// DEDUPLIKASI: Cek cache global
+	cacheMu.Lock()
+	lastStatus, ok := sentCache[fmt.Sprintf("%d", payload.ObjectAttributes.ID)]
+	cacheMu.Unlock()
+	
+	if ok && lastStatus == status {
+		log.Printf("Deduplikasi: ID %d dengan status %s sudah dikirim sebelumnya.", payload.ObjectAttributes.ID, status)
+		return
+	}
+
 	// Filter status yg dikirim (running, success, failed, pending)
 	if status == "success" || status == "failed" || status == "running" || status == "pending" {
 		var statusIcon string
@@ -201,6 +215,11 @@ func handleGitlabWebhook(body []byte) {
 		msg := tgbotapi.NewMessage(targetChatID, msgText)
 		msg.ParseMode = "HTML"
 		bot.Send(msg)
+
+		// Simpan ke cache untuk deduplikasi
+		cacheMu.Lock()
+		sentCache[fmt.Sprintf("%d", payload.ObjectAttributes.ID)] = status
+		cacheMu.Unlock()
 	}
 }
 
