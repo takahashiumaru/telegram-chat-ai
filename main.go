@@ -314,11 +314,28 @@ func main() {
 	}
 	log.Printf("Bot Kaguya aktif sebagai @%s", bot.Self.UserName)
 
+	// --- SETUP UNTUK RENDER (Health Check) ---
+	// Render butuh aplikasi kita mendengarkan sebuah port agar dianggap "Healthy".
+	// Kita jalankan di goroutine agar tidak memblokir bot Telegram.
+	go func() {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8181" // Gunakan port berbeda jika lokal
+		}
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintf(w, "Bot Kaguya is Running!")
+		})
+		log.Printf("Starting health check server on port %s...", port)
+		if err := http.ListenAndServe(":"+port, nil); err != nil {
+			log.Printf("Health check server failed: %v", err)
+		}
+	}()
+
 	// Load state dari file
 	lastReported = loadState()
 
-	// Hapus webhook agar getUpdates lancar (HANYA AKTIFKAN JIKA INGIN LOKAL SAJA TANPA VERCEL)
-	// bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true})
+	// PENTING: Hapus webhook agar metode Long Polling (di Render/Lokal) bisa menerima pesan.
+	bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true})
 
 	// Jalankan Monitor GitLab di Background (Goroutine)
 	go monitorGitlabLoop()
