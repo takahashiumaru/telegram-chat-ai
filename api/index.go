@@ -17,7 +17,8 @@ import (
 // --- KONFIGURASI ---
 const (
 	TelegramBotToken = "6293769087:AAHgRTAHAJj3yG6KC6dex3iNlYgUQjAJr0o"
-	TelegramChatID   = "1631339759" // ID untuk notifikasi GitLab
+	TelegramChatID   = "-1003859941008" // ID untuk notifikasi GitLab
+	TelegramTopicID  = 1419            // ID Topic (Thread) untuk notifikasi
 	GroqAPIKey       = "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"
 )
 
@@ -36,6 +37,15 @@ type GitlabWebhookPayload struct {
 		Name   string `json:"name"`
 		WebURL string `json:"web_url"`
 	} `json:"project"`
+	Commit struct {
+		ID      string `json:"id"`
+		Message string `json:"message"`
+		Title   string `json:"title"`
+	} `json:"commit"`
+	User struct {
+		Name     string `json:"name"`
+		Username string `json:"username"`
+	} `json:"user"`
 }
 
 type AIRequest struct {
@@ -136,7 +146,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if update.Message != nil {
-		handleTelegramMessage(update.Message)
+		handleTelegramMessage(update, body)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -206,14 +216,26 @@ func handleGitlabWebhook(body []byte) {
 			pipelineURL = fmt.Sprintf("%s/-/pipelines/%d", payload.Project.WebURL, payload.ObjectAttributes.ID)
 		}
 
-		msgText := fmt.Sprintf("%s <b>Deploy Update!</b>\n\n<b>Repo:</b> %s\n<b>Pipeline ID:</b> %d\n<b>Branch:</b> %s\n<b>Status:</b> %s\n\n🔗 <a href=\"%s\">Buka GitLab Pipeline</a>",
-			statusIcon, payload.Project.Name, payload.ObjectAttributes.ID, payload.ObjectAttributes.Ref, status, pipelineURL)
+		// Ambil commit message (Title adalah baris pertama commit)
+		commitMsg := payload.Commit.Title
+		if commitMsg == "" {
+			commitMsg = payload.Commit.Message
+		}
+
+		msgText := fmt.Sprintf("%s <b>Deploy Update!</b>\n\n<b>Repo:</b> %s\n<b>Branch:</b> %s\n<b>Status:</b> %s\n<b>Commit:</b> %s\n<b>By:</b> %s\n\n🔗 <a href=\"%s\">Buka GitLab Pipeline</a>",
+			statusIcon, payload.Project.Name, payload.ObjectAttributes.Ref, status, commitMsg, payload.User.Name, pipelineURL)
 
 		var targetChatID int64
 		fmt.Sscanf(TelegramChatID, "%d", &targetChatID)
 		
 		msg := tgbotapi.NewMessage(targetChatID, msgText)
 		msg.ParseMode = "HTML"
+		
+		// Set Topic ID jika ada
+		if TelegramTopicID != 0 {
+			msg.BaseChat.ReplyToMessageID = TelegramTopicID
+		}
+		
 		bot.Send(msg)
 
 		// Simpan ke cache untuk deduplikasi
@@ -224,7 +246,8 @@ func handleGitlabWebhook(body []byte) {
 }
 
 // --- LOGIKA TELEGRAM AI ---
-func handleTelegramMessage(msg *tgbotapi.Message) {
+func handleTelegramMessage(update tgbotapi.Update, rawBody []byte) {
+	msg := update.Message
 	// Filter Grup
 	if !msg.Chat.IsGroup() && !msg.Chat.IsSuperGroup() {
 		return
@@ -240,6 +263,43 @@ func handleTelegramMessage(msg *tgbotapi.Message) {
 	botMention := "@" + bot.Self.UserName
 	mentionAliasesLower := []string{strings.ToLower(botMention), "@thiskaguyabot", "@ThisKaguyaBot"}
 
+	// --- 1. HANDLE PERINTAH KHUSUS (/ping, /id) ---
+	if lowerText == "/ping" || lowerText == "/ping"+mentionAliasesLower[0] {
+		reply := tgbotapi.NewMessage(msg.Chat.ID, "Pong!")
+		reply.ReplyToMessageID = msg.MessageID
+		bot.Send(reply)
+		return
+	}
+
+	if lowerText == "/id" || lowerText == "/id"+mentionAliasesLower[0] {
+		// Ambil Thread ID LANGSUNG dari raw JSON
+		var threadID int64 = 0
+		var rawMap map[string]interface{}
+		json.Unmarshal(rawBody, &rawMap)
+
+		if msgMap, ok := rawMap["message"].(map[string]interface{}); ok {
+			if tID, exists := msgMap["message_thread_id"]; exists {
+				if val, ok := tID.(float64); ok {
+					threadID = int64(val)
+				}
+			}
+		}
+
+		replyMsg := fmt.Sprintf("ℹ️ <b>Info Chat:</b>\n\n<b>Chat ID:</b> %d\n<b>Thread ID:</b> %d\n<b>Tipe:</b> %s",
+			msg.Chat.ID, threadID, msg.Chat.Type)
+		
+		if threadID != 0 {
+			replyMsg += fmt.Sprintf("\n\n<i>Gunakan ID %d dan Thread %d</i>", msg.Chat.ID, threadID)
+		}
+
+		reply := tgbotapi.NewMessage(msg.Chat.ID, replyMsg)
+		reply.ReplyToMessageID = msg.MessageID
+		reply.ParseMode = "HTML"
+		bot.Send(reply)
+		return
+	}
+
+	// --- 2. HANDLE AI BOT ---
 	var query string
 	isAskCommand := false
 	hasAlias := containsAliasFold(lowerText, mentionAliasesLower) || mentionInEntities(msg, mentionAliasesLower) || (msg.ReplyToMessage != nil && msg.ReplyToMessage.From.ID == bot.Self.ID)
@@ -259,10 +319,6 @@ func handleTelegramMessage(msg *tgbotapi.Message) {
 		reply.ReplyToMessageID = msg.MessageID
 		reply.ParseMode = tgbotapi.ModeMarkdown
 		reply.DisableWebPagePreview = true
-		bot.Send(reply)
-	} else if lowerText == "/ping" {
-		reply := tgbotapi.NewMessage(msg.Chat.ID, "Pong!")
-		reply.ReplyToMessageID = msg.MessageID
 		bot.Send(reply)
 	}
 }

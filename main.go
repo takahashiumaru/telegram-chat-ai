@@ -16,17 +16,19 @@ import (
 
 // --- KONFIGURASI GITLAB ---
 type Project struct {
-	ID   string
-	Name string
+	ID      string
+	Name    string
+	ChatID  int64 // Jika dikosongkan (0), pakai default TelegramChatID
+	TopicID int64 // Jika dikosongkan (0), masuk ke General
 }
 
 var Projects = []Project{
-	{ID: "39997609", Name: "mf-micro-service-discount-proposal"},
-	{ID: "45966760", Name: "visit-flow-go"},
-	{ID: "59214445", Name: "visit-flow-presence"},
-	{ID: "46744032", Name: "visit-flow-api-gateway"},
-	{ID: "76428296", Name: "visit-flow-payroll"},
-	{ID: "46743800", Name: "visit-flow-survey-location-go"},
+	{ID: "39997609", Name: "mf-micro-service-discount-proposal", TopicID: 1419},
+	{ID: "45966760", Name: "visit-flow-go", TopicID: 1419},
+	{ID: "59214445", Name: "visit-flow-presence", TopicID: 1419},
+	{ID: "46744032", Name: "visit-flow-api-gateway", TopicID: 1419},
+	{ID: "76428296", Name: "visit-flow-payroll", TopicID: 1419},
+	{ID: "46743800", Name: "visit-flow-survey-location-go", TopicID: 1419},
 }
 
 const (
@@ -37,17 +39,23 @@ const (
 // --- KONFIGURASI TELEGRAM ---
 const (
 	TelegramBotToken = "6293769087:AAHgRTAHAJj3yG6KC6dex3iNlYgUQjAJr0o"
-	TelegramChatID   = "1631339759" // ID Chat untuk Notifikasi GitLab
+	TelegramChatID   = "-1003859941008" // ID Chat untuk Notifikasi GitLab
 )
 
 // --- STRUCT DATA ---
 
 type PipelineResponse []struct {
 	ID        int64  `json:"id"`
+	SHA       string `json:"sha"`
 	Status    string `json:"status"`
 	Ref       string `json:"ref"`
 	WebURL    string `json:"web_url"`
 	UpdatedAt string `json:"updated_at"`
+}
+
+type CommitResponse struct {
+	Title   string `json:"title"`
+	Message string `json:"message"`
 }
 
 type AIRequest struct {
@@ -272,16 +280,65 @@ func checkGitlabPipeline(project Project) {
 				statusIcon = "🔄"
 			}
 
-			msgText := fmt.Sprintf("%s <b>Deploy Update!</b>\n\n<b>Repo:</b> %s\n<b>Pipeline ID:</b> %d\n<b>Branch:</b> %s\n<b>Status:</b> %s\n\n🔗 <a href=\"%s\">Buka GitLab Pipeline</a>",
-				statusIcon, project.Name, latestPipeline.ID, latestPipeline.Ref, latestPipeline.Status, latestPipeline.WebURL)
+			// Fetch Detail Commit Message
+			commitMsg := "No commit message"
+			if latestPipeline.SHA != "" {
+				commitUrl := fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/repository/commits/%s", project.ID, latestPipeline.SHA)
+				commitReq, _ := http.NewRequest("GET", commitUrl, nil)
+				commitReq.Header.Add("PRIVATE-TOKEN", GitlabToken)
+				if commitResp, err := client.Do(commitReq); err == nil {
+					defer commitResp.Body.Close()
+					var commitDetail CommitResponse
+					if err := json.NewDecoder(commitResp.Body).Decode(&commitDetail); err == nil {
+						if commitDetail.Title != "" {
+							commitMsg = commitDetail.Title
+						} else {
+							commitMsg = truncate(commitDetail.Message, 100)
+						}
+					}
+				}
+			}
+
+			// Fetch Detail Pipeline (untuk info Triggered By)
+			userMsg := "Unknown"
+			pipelineUrl := fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/pipelines/%d", project.ID, latestPipeline.ID)
+			pipeReq, _ := http.NewRequest("GET", pipelineUrl, nil)
+			pipeReq.Header.Add("PRIVATE-TOKEN", GitlabToken)
+			if pipeResp, err := client.Do(pipeReq); err == nil {
+				defer pipeResp.Body.Close()
+				var pipeDetail struct {
+					User struct {
+						Name string `json:"name"`
+					} `json:"user"`
+				}
+				if err := json.NewDecoder(pipeResp.Body).Decode(&pipeDetail); err == nil {
+					if pipeDetail.User.Name != "" {
+						userMsg = pipeDetail.User.Name
+					}
+				}
+			}
+
+			msgText := fmt.Sprintf("%s <b>Deploy Update!</b>\n\n<b>Repo:</b> %s\n<b>Branch:</b> %s\n<b>Status:</b> %s\n<b>Commit:</b> %s\n<b>By:</b> %s\n\n🔗 <a href=\"%s\">Buka GitLab Pipeline</a>",
+				statusIcon, project.Name, latestPipeline.Ref, latestPipeline.Status, commitMsg, userMsg, latestPipeline.WebURL)
 
 			log.Printf("[%s] Mengirim notifikasi %s (ID: %d, Time: %v ago)...", project.Name, latestPipeline.Status, latestPipeline.ID, timeSinceUpdate)
 
 			var targetChatID int64
 			fmt.Sscanf(TelegramChatID, "%d", &targetChatID)
 
+			// Gunakan ChatID spesifik proyek jika ada
+			if project.ChatID != 0 {
+				targetChatID = project.ChatID
+			}
+
 			notification := tgbotapi.NewMessage(targetChatID, msgText)
 			notification.ParseMode = "HTML"
+			
+			// Set Topic/Thread ID jika tersedia
+			if project.TopicID != 0 {
+				notification.BaseChat.ReplyToMessageID = int(project.TopicID) // Di library v5, TopicID biasanya di-mapping ke sini untuk Topic supergroup
+			}
+			
 			bot.Send(notification)
 
 			lastReported[project.ID] = State{LastID: latestPipeline.ID, LastStatus: latestPipeline.Status}
@@ -347,6 +404,44 @@ func main() {
 		botMention := "@" + bot.Self.UserName
 		mentionAliasesLower := []string{strings.ToLower(botMention), "@thiskaguyabot", "@ThisKaguyaBot"}
 
+		// --- 1. HANDLE PERINTAH KHUSUS (/ping, /id) ---
+		if lowerText == "/ping" || lowerText == "/ping"+mentionAliasesLower[0] {
+			reply := tgbotapi.NewMessage(msg.Chat.ID, "Pong!")
+			reply.ReplyToMessageID = msg.MessageID
+			bot.Send(reply)
+			continue
+		}
+
+		if lowerText == "/id" || lowerText == "/id"+mentionAliasesLower[0] {
+			// Trik Manual: Ambil Thread ID dari JSON mentah karena library v5.5.1 belum punya field-nya
+			var threadID int64 = 0
+			rawUpdate, _ := json.Marshal(update)
+			var updateMap map[string]interface{}
+			json.Unmarshal(rawUpdate, &updateMap)
+
+			if msgMap, ok := updateMap["message"].(map[string]interface{}); ok {
+				if tID, exists := msgMap["message_thread_id"]; exists {
+					if val, ok := tID.(float64); ok {
+						threadID = int64(val)
+					}
+				}
+			}
+
+			replyMsg := fmt.Sprintf("ℹ️ <b>Info Chat (Umar & Kaguya):</b>\n\n<b>Chat ID:</b> %d\n<b>Thread ID:</b> %d\n<b>Tipe:</b> %s",
+				msg.Chat.ID, threadID, msg.Chat.Type)
+			
+			if threadID != 0 {
+				replyMsg += fmt.Sprintf("\n\n<i>Gunakan ID %d dan Thread %d untuk masuk ke topik ini.</i>", msg.Chat.ID, threadID)
+			}
+
+			reply := tgbotapi.NewMessage(msg.Chat.ID, replyMsg)
+			reply.ReplyToMessageID = msg.MessageID
+			reply.ParseMode = "HTML"
+			bot.Send(reply)
+			continue
+		}
+
+		// --- 2. HANDLE AI BOT ---
 		var query string
 		isAskCommand := false
 		hasAlias := containsAliasFold(lowerText, mentionAliasesLower) || mentionInEntities(msg, mentionAliasesLower)
@@ -378,10 +473,5 @@ func main() {
 			continue
 		}
 
-		if lowerText == "/ping" || lowerText == "/ping"+mentionAliasesLower[0] {
-			reply := tgbotapi.NewMessage(msg.Chat.ID, "Pong!")
-			reply.ReplyToMessageID = msg.MessageID
-			bot.Send(reply)
-		}
 	}
 }
