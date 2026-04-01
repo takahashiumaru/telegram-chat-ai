@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -38,10 +39,11 @@ const (
 // --- STRUCT DATA ---
 
 type PipelineResponse []struct {
-	ID     int64  `json:"id"`
-	Status string `json:"status"`
-	Ref    string `json:"ref"`
-	WebURL string `json:"web_url"`
+	ID        int64  `json:"id"`
+	Status    string `json:"status"`
+	Ref       string `json:"ref"`
+	WebURL    string `json:"web_url"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type AIRequest struct {
@@ -60,13 +62,29 @@ type AIResponse struct {
 	} `json:"choices"`
 }
 
-// Map untuk melacak status terakhir per project ID (GitLab)
-var lastReported = make(map[string]struct {
-	ID     int64
-	Status string
-})
-
 var bot *tgbotapi.BotAPI
+
+type State struct {
+	LastID     int64  `json:"id"`
+	LastStatus string `json:"status"`
+}
+
+func saveState(states map[string]State) {
+	data, _ := json.Marshal(states)
+	_ = os.WriteFile("state.json", data, 0644)
+}
+
+func loadState() map[string]State {
+	data, err := os.ReadFile("state.json")
+	if err != nil {
+		return make(map[string]State)
+	}
+	var states map[string]State
+	json.Unmarshal(data, &states)
+	return states
+}
+
+var lastReported = make(map[string]State)
 
 // --- FUNGSI AI & UTILS ---
 
@@ -219,10 +237,23 @@ func checkGitlabPipeline(project Project) {
 		latestPipeline := pipelines[0]
 		last := lastReported[project.ID]
 
-		isNewId := (latestPipeline.ID != last.ID)
-		isNewStatus := (latestPipeline.Status != last.Status)
+		isNewId := (latestPipeline.ID != last.LastID)
+		isNewStatus := (latestPipeline.Status != last.LastStatus)
 
-		if (isNewId || isNewStatus) && (latestPipeline.Status == "success" || latestPipeline.Status == "failed" || latestPipeline.Status == "running") {
+		// Parse waktu pipeline (GitLab pakai ISO 8601)
+		updatedAt, err := time.Parse(time.RFC3339, latestPipeline.UpdatedAt)
+		if err != nil {
+			updatedAt = time.Now()
+		}
+
+		// Hitung selisih waktu
+		timeSinceUpdate := time.Since(updatedAt)
+
+		// Hanya kirim jika baru (ID/Status berubah) DAN masih dalam jendela 30 menit
+		if (isNewId || isNewStatus) && 
+		   (latestPipeline.Status == "success" || latestPipeline.Status == "failed" || latestPipeline.Status == "running" || latestPipeline.Status == "pending") &&
+		   (timeSinceUpdate.Minutes() <= 30) {
+			
 			var statusIcon string
 			switch latestPipeline.Status {
 			case "success":
@@ -231,6 +262,8 @@ func checkGitlabPipeline(project Project) {
 				statusIcon = "❌"
 			case "running":
 				statusIcon = "⏳"
+			case "pending":
+				statusIcon = "🕘"
 			default:
 				statusIcon = "🔄"
 			}
@@ -238,13 +271,8 @@ func checkGitlabPipeline(project Project) {
 			msgText := fmt.Sprintf("%s <b>Deploy Update!</b>\n\n<b>Repo:</b> %s\n<b>Pipeline ID:</b> %d\n<b>Branch:</b> %s\n<b>Status:</b> %s\n\n🔗 <a href=\"%s\">Buka GitLab Pipeline</a>",
 				statusIcon, project.Name, latestPipeline.ID, latestPipeline.Ref, latestPipeline.Status, latestPipeline.WebURL)
 
-			log.Printf("[%s] Mengirim notifikasi %s...", project.Name, latestPipeline.Status)
+			log.Printf("[%s] Mengirim notifikasi %s (ID: %d, Time: %v ago)...", project.Name, latestPipeline.Status, latestPipeline.ID, timeSinceUpdate)
 			
-			// Kirim ke Telegram
-			chatID, _ := time.ParseDuration("0s") // dummy to use ChatID correctly
-			_ = chatID
-			
-			// Konversi string ChatID ke int64
 			var targetChatID int64
 			fmt.Sscanf(TelegramChatID, "%d", &targetChatID)
 			
@@ -252,15 +280,12 @@ func checkGitlabPipeline(project Project) {
 			notification.ParseMode = "HTML"
 			bot.Send(notification)
 
-			lastReported[project.ID] = struct {
-				ID     int64
-				Status string
-			}{ID: latestPipeline.ID, Status: latestPipeline.Status}
-		} else if isNewStatus {
-			lastReported[project.ID] = struct {
-				ID     int64
-				Status string
-			}{ID: latestPipeline.ID, Status: latestPipeline.Status}
+			lastReported[project.ID] = State{LastID: latestPipeline.ID, LastStatus: latestPipeline.Status}
+			saveState(lastReported)
+		} else if isNewId || isNewStatus {
+			// Update state jika status berubah tapi tidak dikirim (karena sudah lewat 30 menit)
+			lastReported[project.ID] = State{LastID: latestPipeline.ID, LastStatus: latestPipeline.Status}
+			saveState(lastReported)
 		}
 	}
 }
@@ -288,6 +313,9 @@ func main() {
 		log.Fatalf("init bot: %v", err)
 	}
 	log.Printf("Bot Kaguya aktif sebagai @%s", bot.Self.UserName)
+
+	// Load state dari file
+	lastReported = loadState()
 
 	// Hapus webhook agar getUpdates lancar (HANYA AKTIFKAN JIKA INGIN LOKAL SAJA TANPA VERCEL)
 	// bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true})

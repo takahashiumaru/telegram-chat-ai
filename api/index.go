@@ -26,9 +26,10 @@ const (
 type GitlabWebhookPayload struct {
 	ObjectKind       string `json:"object_kind"`
 	ObjectAttributes struct {
-		ID     int64  `json:"id"`
-		Status string `json:"status"`
-		Ref    string `json:"ref"`
+		ID        int64  `json:"id"`
+		Status    string `json:"status"`
+		Ref       string `json:"ref"`
+		CreatedAt string `json:"created_at"`
 	} `json:"object_attributes"`
 	Project struct {
 		Name   string `json:"name"`
@@ -152,8 +153,24 @@ func handleGitlabWebhook(body []byte) {
 	}
 
 	status := payload.ObjectAttributes.Status
-	// Filter status yg dikirim (running, success, failed)
-	if status == "success" || status == "failed" || status == "running" {
+
+	// Parsing waktu pembuatan pipeline (Kombinasi format GitLab)
+	createdAt, err := time.Parse("2006-01-02 15:04:05 MST", payload.ObjectAttributes.CreatedAt)
+	if err != nil {
+		createdAt, err = time.Parse(time.RFC3339, payload.ObjectAttributes.CreatedAt)
+		if err != nil {
+			createdAt = time.Now()
+		}
+	}
+
+	// Cek apakah event ini "baru" (di bawah 30 menit)
+	if time.Since(createdAt).Minutes() > 30 {
+		log.Printf("GitLab Webhook diabaikan karena pipeline sudah lama (ID: %d, CreatedAt: %s)", payload.ObjectAttributes.ID, payload.ObjectAttributes.CreatedAt)
+		return
+	}
+
+	// Filter status yg dikirim (running, success, failed, pending)
+	if status == "success" || status == "failed" || status == "running" || status == "pending" {
 		var statusIcon string
 		switch status {
 		case "success":
@@ -162,6 +179,8 @@ func handleGitlabWebhook(body []byte) {
 			statusIcon = "❌"
 		case "running":
 			statusIcon = "⏳"
+		case "pending":
+			statusIcon = "🕘"
 		default:
 			statusIcon = "🔄"
 		}
