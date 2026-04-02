@@ -17,17 +17,28 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 26088
           script: |
-            # 1. Pindah ke folder project di dalam VPS
-            cd /home/ubuntu/telegram-chat-ai
+            # 1. Masuk ke folder home utama Anda
+            cd /home/ubuntu
             
-            # 2. Tarik kode terbaru dari GitHub branch main
+            # 2. Cek apakah folder project sudah ada. Jika belum, lakukan git clone!
+            if [ ! -d "telegram-chat-ai" ]; then
+              echo "Folder belum ada. Melakukan git clone..."
+              git clone https://github.com/takahashiumaru/telegram-chat-ai.git
+            else
+              echo "Folder sudah ada. Lanjut ke proses pull."
+            fi
+            
+            # 3. Masuk ke dalam folder project
+            cd telegram-chat-ai
+            
+            # 4. Tarik kode terbaru dari GitHub branch main
             git pull origin main
             
-            # 3. Build Docker image baru berdasarkan kode terbaru
+            # 5. Build Docker image baru berdasarkan kode terbaru
             docker build -t telegram-chat-ai .
             
-            # 4. Matikan dan hapus container lama (abaikan error jika belum ada container)
+            # 6. Matikan dan hapus container lama (abaikan error jika belum ada)
             docker rm -f bot-ai-saya || true
             
-            # 5. Jalankan container baru di background
+            # 7. Jalankan container baru di background
             docker run -d --name bot-ai-saya --restart unless-stopped telegram-chat-ai
