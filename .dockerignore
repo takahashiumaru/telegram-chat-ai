@@ -1,0 +1,12 @@
+.git
+.vercel
+node_modules
+dist
+.DS_Store
+*.exe
+*.test
+api/
+vercel.json
+README.md
+telegram-chat-ai
+state.json
