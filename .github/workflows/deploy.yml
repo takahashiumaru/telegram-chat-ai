@@ -1,0 +1,32 @@
+name: Deploy Golang Bot to VPS
+
+on:
+  push:
+    branches:
+      - main  # Trigger hanya kalau ada push ke branch main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Eksekusi Perintah di VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            # 1. Pindah ke folder project (Pastikan path ini sesuai dengan di VPS Anda!)
+            cd /home/ubuntu/telegram-chat-ai
+            
+            # 2. Tarik kode terbaru dari GitHub
+            git pull origin main
+            
+            # 3. Build ulang Docker image-nya
+            docker build -t telegram-chat-ai .
+            
+            # 4. Matikan dan hapus paksa container lama
+            docker rm -f bot-ai-saya || true
+            
+            # 5. Nyalakan ulang bot dengan kode terbaru
+            docker run -d --name bot-ai-saya --restart unless-stopped telegram-chat-ai
