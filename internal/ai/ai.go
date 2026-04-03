@@ -47,20 +47,29 @@ func (s *AIService) CallAI(query string) string {
 
 	req.Header.Set("Authorization", "Bearer "+s.ApiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "KaguyaTelegramBot/1.0")
+	req.Header.Set("User-Agent", "KaguyaTelegramBot/2.0")
+	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	log.Printf("[AI] Calling Endpoint: %s", s.Endpoint)
+	log.Printf("[AI] Sending request to %s", s.Endpoint)
+	
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("[AI] Error sending request: %v", err)
-		return "Maaf, aku tidak bisa menghubungi server AI saat ini."
+		log.Printf("[AI] Connection Error: %v", err)
+		return "⚠️ [ERROR] Bot tidak bisa menghubungi server AI (Koneksi ditolak/Timeout)."
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("[AI] Error Response Body: %s", string(body))
+		log.Printf("[AI] %d HTTP Error: %s", resp.StatusCode, string(body))
+		
+		if resp.StatusCode == 403 {
+			return "🚫 [403] IP VPS Anda diblokir oleh Groq/Cloudflare. Solusi: Gunakan Cloudflare Worker Proxy."
+		}
+		if resp.StatusCode == 404 || resp.StatusCode == 1042 {
+			return fmt.Sprintf("⚠️ [%d] Endpoint bermasalah. Pastikan URL Cloudflare Worker Anda benar.", resp.StatusCode)
+		}
 		return fmt.Sprintf("AI error (%d): %s", resp.StatusCode, truncate(string(body), 400))
 	}
 
