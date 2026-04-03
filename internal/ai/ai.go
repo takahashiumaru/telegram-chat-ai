@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 	"kaguya-telegram/internal/config"
@@ -49,14 +50,17 @@ func (s *AIService) CallAI(query string) string {
 	req.Header.Set("User-Agent", "KaguyaTelegramBot/1.0")
 
 	client := &http.Client{Timeout: 15 * time.Second}
+	log.Printf("[AI] Calling Endpoint: %s", s.Endpoint)
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("[AI] Error sending request: %v", err)
 		return "Maaf, aku tidak bisa menghubungi server AI saat ini."
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("[AI] Error Response Body: %s", string(body))
 		return fmt.Sprintf("AI error (%d): %s", resp.StatusCode, truncate(string(body), 400))
 	}
 
