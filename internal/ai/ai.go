@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 	"kaguya-telegram/internal/config"
 	"kaguya-telegram/internal/model"
@@ -40,7 +41,14 @@ func (s *AIService) CallAI(query string) string {
 		return "Maaf, terjadi kesalahan teknis (marshal)."
 	}
 
-	req, err := http.NewRequest("POST", s.Endpoint, bytes.NewBuffer(jsonData))
+	// Otomatis tambahkan path jika tidak ada (mencegah 404)
+	fullEndpoint := s.Endpoint
+	if !strings.HasSuffix(fullEndpoint, "/openai/v1/chat/completions") && !strings.Contains(fullEndpoint, "api.groq.com") {
+		// Jika ini adalah proxy (bukan Groq asli) dan tidak punya path, tambahkan.
+		fullEndpoint = strings.TrimSuffix(fullEndpoint, "/") + "/openai/v1/chat/completions"
+	}
+
+	req, err := http.NewRequest("POST", fullEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "Maaf, ada masalah saat menyiapkan permintaan ke AI."
 	}
