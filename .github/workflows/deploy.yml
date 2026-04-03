@@ -15,7 +15,7 @@ jobs:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: 26088
+          port: 22
           script: |
             # 1. Masuk ke direktori home user
             cd $HOME
