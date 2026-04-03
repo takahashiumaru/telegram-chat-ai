@@ -18,7 +18,7 @@ type Client struct {
 
 func NewClient(sm *state.StateManager) *Client {
 	return &Client{
-		Token: config.GitlabToken,
+		Token: config.GetGitlabToken(),
 		SM:    sm,
 	}
 }

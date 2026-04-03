@@ -21,8 +21,8 @@ type AIService struct {
 
 func NewAIService() *AIService {
 	return &AIService{
-		ApiKey:    config.AIKey,
-		Endpoint:  config.AIEndpoint,
+		ApiKey:    config.GetAIKey(),
+		Endpoint:  config.GetAIEndpoint(),
 		ModelName: "gpt-4o-mini",
 	}
 }

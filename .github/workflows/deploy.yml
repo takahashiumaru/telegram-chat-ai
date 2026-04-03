@@ -43,10 +43,11 @@ jobs:
             docker run -d \
               --name telegram-chat-ai \
               --restart unless-stopped \
-              -e GROQ_API_ENDPOINT="${{ secrets.GROQ_API_ENDPOINT }}" \
-              -e GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
+              -e AI_API_ENDPOINT="${{ secrets.AI_API_ENDPOINT }}" \
+              -e AI_API_KEY="${{ secrets.AI_API_KEY }}" \
               -e TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
               -e TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
+              -e GITLAB_TOKEN="${{ secrets.GITLAB_TOKEN }}" \
               -v /etc/timezone:/etc/timezone:ro \
               -v /etc/localtime:/etc/localtime:ro \
               telegram-chat-ai:latest

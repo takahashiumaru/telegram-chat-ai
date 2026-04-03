@@ -6,14 +6,15 @@ import (
 	"strconv"
 )
 
-var (
-	GitlabToken      = getEnv("GITLAB_TOKEN", "")
-	GitlabAPIURL     = "https://gitlab.com/api/v4/projects/%s/pipelines?per_page=1"
-	TelegramBotToken = getEnv("TELEGRAM_BOT_TOKEN", "")
-	TelegramChatID   = getEnv("TELEGRAM_CHAT_ID", "-1003859941008") 
-	AIKey            = getEnv("AI_API_KEY", "")
-	AIEndpoint       = getEnv("AI_API_ENDPOINT", "https://models.inference.ai.azure.com/chat/completions")
-	StateFilePath    = "state.json"
+func GetGitlabToken() string      { return getEnv("GITLAB_TOKEN", "") }
+func GetTelegramBotToken() string { return getEnv("TELEGRAM_BOT_TOKEN", "") }
+func GetTelegramChatID() int64    { id, _ := strconv.ParseInt(getEnv("TELEGRAM_CHAT_ID", "-1003859941008"), 10, 64); return id }
+func GetAIKey() string            { return getEnv("AI_API_KEY", "") }
+func GetAIEndpoint() string       { return getEnv("AI_API_ENDPOINT", "https://models.inference.ai.azure.com/chat/completions") }
+
+const (
+	GitlabAPIURL  = "https://gitlab.com/api/v4/projects/%s/pipelines?per_page=1"
+	StateFilePath = "state.json"
 )
 
 var Projects = []model.Project{
@@ -30,9 +31,4 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
-}
-
-func GetTelegramChatID() int64 {
-	id, _ := strconv.ParseInt(TelegramChatID, 10, 64)
-	return id
 }

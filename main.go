@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"github.com/joho/godotenv"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"kaguya-telegram/internal/ai"
 	"kaguya-telegram/internal/config"
@@ -12,8 +13,10 @@ import (
 )
 
 func main() {
+	// Load .env file for local development
+	_ = godotenv.Load()
 	// 1. Initialize core services
-	bot, err := tgbotapi.NewBotAPI(config.TelegramBotToken)
+	bot, err := tgbotapi.NewBotAPI(config.GetTelegramBotToken())
 	if err != nil {
 		log.Fatalf("Fatal: failed to initialize bot: %v", err)
 	}
