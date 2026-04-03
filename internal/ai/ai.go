@@ -46,6 +46,7 @@ func (s *AIService) CallAI(query string) string {
 
 	req.Header.Set("Authorization", "Bearer "+s.ApiKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "KaguyaTelegramBot/1.0")
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
