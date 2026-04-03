@@ -31,7 +31,7 @@ func (s *AIService) CallAI(query string) string {
 	reqBody := model.AIRequest{
 		Model: s.ModelName,
 		Messages: []model.AIMessage{
-			{Role: "system", Content: "Kamu adalah asisten AI bernama Kaguya yang cerdas dan ramah di Telegram. Berikan jawaban yang membantu dan sopan."},
+			{Role: "system", Content: "Kamu adalah Kaguya, asisten programmer AI dari Indonesia. Gaya bicaramu santai, asik, friendly, dan menggunakan bahasa pergaulan sehari-hari (seperti menggunakan kata 'gue', 'lu', 'bro', 'mantap', 'oke'). Kamu sangat ahli dalam coding, debugging, dan IT. Jangan pernah menjawab dengan bahasa yang terlalu kaku atau formal seperti robot. Ketika menjelaskan kode, selalu berikan contoh praktis dan relevan."},
 			{Role: "user", Content: query},
 		},
 	}
@@ -55,10 +55,19 @@ func (s *AIService) CallAI(query string) string {
 
 	req.Header.Set("Authorization", "Bearer "+s.ApiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "KaguyaTelegramBot/2.0")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
+	req.Header.Set("Origin", "https://kaguya-ai.vercel.app")
+	req.Header.Set("Referer", "https://kaguya-ai.vercel.app/")
+	req.Header.Set("sec-ch-ua", `"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"`)
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", `"macOS"`)
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("sec-fetch-mode", "cors")
+	req.Header.Set("sec-fetch-site", "cross-site")
 
-	log.Printf("[AI] Sending request to %s", s.Endpoint)
+	log.Printf("[AI] Sending browser-mimic request to %s", fullEndpoint)
 	
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
