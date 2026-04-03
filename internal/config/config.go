@@ -27,8 +27,9 @@ var Projects = []model.Project{
 }
 
 func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
+	value, exists := os.LookupEnv(key)
+	if !exists || value == "" {
+		return defaultValue
 	}
-	return defaultValue
+	return value
 }
