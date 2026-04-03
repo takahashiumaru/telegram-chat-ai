@@ -1,19 +1,18 @@
 package config
 
 import (
+	"kaguya-telegram/internal/model"
 	"os"
 	"strconv"
-	"kaguya-telegram/internal/model"
 )
 
 var (
-	GitlabToken      = getEnv("GITLAB_TOKEN", "glpat-jo57tfUU5LsuIEFc_G4DGmM6MQpvOjEKdTo3NHpxbg8.01.170yd21nc")
+	GitlabToken      = getEnv("GITLAB_TOKEN", "")
 	GitlabAPIURL     = "https://gitlab.com/api/v4/projects/%s/pipelines?per_page=1"
-	TelegramBotToken = getEnv("TELEGRAM_BOT_TOKEN", "6293769087:AAHgRTAHAJj3yG6KC6dex3iNlYgUQjAJr0o")
-	TelegramChatID   = getEnv("TELEGRAM_CHAT_ID", "-1003859941008")
-	GroqAPIKey       = getEnv("GROQ_API_KEY", "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")
-	// PAKE URL PROXY ASLI LU BRO BIAR TEMBUS!
-	GroqAPIEndpoint  = getEnv("GROQ_API_ENDPOINT", "https://groq-proxy.umarmarufmutaqin.workers.dev/")
+	TelegramBotToken = getEnv("TELEGRAM_BOT_TOKEN", "")
+	TelegramChatID   = getEnv("TELEGRAM_CHAT_ID", "-1003859941008") 
+	AIKey            = getEnv("AI_API_KEY", "")
+	AIEndpoint       = getEnv("AI_API_ENDPOINT", "https://models.inference.ai.azure.com/chat/completions")
 	StateFilePath    = "state.json"
 )
 

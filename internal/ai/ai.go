@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"kaguya-telegram/internal/config"
+	"kaguya-telegram/internal/model"
 	"log"
 	"net/http"
 	"strings"
 	"time"
-	"kaguya-telegram/internal/config"
-	"kaguya-telegram/internal/model"
 )
 
 type AIService struct {
@@ -21,9 +21,9 @@ type AIService struct {
 
 func NewAIService() *AIService {
 	return &AIService{
-		ApiKey:    config.GroqAPIKey,
-		Endpoint:  config.GroqAPIEndpoint,
-		ModelName: "llama-3.3-70b-versatile",
+		ApiKey:    config.AIKey,
+		Endpoint:  config.AIEndpoint,
+		ModelName: "gpt-4o-mini",
 	}
 }
 
@@ -33,8 +33,6 @@ func (s *AIService) CallAI(query string) string {
 		Messages: []model.AIMessage{
 			{Role: "system", Content: "Kamu adalah Kaguya, asisten programmer AI dari Indonesia. Gaya bicaramu santai, asik, friendly, dan menggunakan bahasa pergaulan sehari-hari (seperti menggunakan kata 'gue', 'lu', 'bro', 'mantap', 'oke'). Kamu sangat ahli dalam coding, debugging, dan IT. Jangan pernah menjawab dengan bahasa yang terlalu kaku atau formal seperti robot. Ketika menjelaskan kode, selalu berikan contoh praktis dan relevan."},
 			{Role: "assistant", Content: "Siap bro! Gue paham dan siap nemenin lu ngoding."},
-			{Role: "user", Content: "halooo"},
-			{Role: "assistant", Content: "Halo bro! Selamat datang! Ada yang bisa gue bantu tentang coding atau IT? Atau lu cuma mau ngobrol-ngobrol aja? Mantap, gue siap!"},
 			{Role: "user", Content: query},
 		},
 		MaxTokens:   4096,
@@ -48,7 +46,10 @@ func (s *AIService) CallAI(query string) string {
 
 	// Otomatis tambahkan path jika tidak ada (mencegah 404)
 	fullEndpoint := s.Endpoint
-	if !strings.HasSuffix(fullEndpoint, "/openai/v1/chat/completions") && !strings.Contains(fullEndpoint, "api.groq.com") {
+	isSpecial := strings.Contains(fullEndpoint, "googleapis.com") || strings.Contains(fullEndpoint, "api.groq.com") || strings.Contains(fullEndpoint, "azure.com")
+	hasSuffix := strings.HasSuffix(fullEndpoint, "/completions")
+
+	if !isSpecial && !hasSuffix {
 		fullEndpoint = strings.TrimSuffix(fullEndpoint, "/") + "/openai/v1/chat/completions"
 	}
 
@@ -57,21 +58,21 @@ func (s *AIService) CallAI(query string) string {
 		return "Maaf, ada masalah saat menyiapkan permintaan ke AI."
 	}
 
-	// HEADER PERSIS KAYAK CURL TERAKHIR
 	req.Header.Set("Authorization", "Bearer "+s.ApiKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+	req.Header.Set("Origin", "https://kaguya-ai.vercel.app")
+	req.Header.Set("Referer", "https://kaguya-ai.vercel.app/")
+	req.Header.Set("Accept", "*/*")
 
-	// PRINT CURL UNTUK DEBUG (Mantap Bro!)
+	// PRINT CURL UNTUK DEBUG
 	curlCmd := fmt.Sprintf(`curl "%s" \
   -H "Authorization: Bearer %s" \
-  -H "Content-Type: application/json" \
-  -H "Accept-Language: id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7" \
-  -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36" \
   -d '%s'`, fullEndpoint, s.ApiKey, string(jsonData))
 	log.Printf("[DEBUG-CURL]:\n%s", curlCmd)
 
 	log.Printf("[AI] Sending clean request to %s", fullEndpoint)
-	
+
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -83,7 +84,7 @@ func (s *AIService) CallAI(query string) string {
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[AI] %d HTTP Error: %s", resp.StatusCode, string(body))
-		
+
 		if resp.StatusCode == 403 {
 			return "🚫 [403] IP VPS Anda diblokir oleh Groq/Cloudflare. Solusi: Gunakan Cloudflare Worker Proxy."
 		}

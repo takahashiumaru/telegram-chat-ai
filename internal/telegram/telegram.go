@@ -98,8 +98,19 @@ func (h *BotHandler) SendMessage(chatID int64, text string, replyTo int, parseMo
 		msg.ParseMode = parseMode
 	}
 	msg.DisableWebPagePreview = true
+	
+	// Coba kirim pesan
 	if _, err := h.Bot.Send(msg); err != nil {
-		log.Printf("Error sending message: %v", err)
+		// Jika gagal karena masalah ParseMode (karakter spesial AI), kirim ulang sebagai Plain Text
+		if strings.Contains(err.Error(), "can't parse entities") || strings.Contains(err.Error(), "parse") {
+			log.Printf("[Telegram] Warning: Markdown failed, falling back to plain text. Error: %v", err)
+			msg.ParseMode = "" // Hapus parse mode biar jadi teks biasa
+			if _, errRetry := h.Bot.Send(msg); errRetry != nil {
+				log.Printf("[Telegram] Error sending plain text fallback: %v", errRetry)
+			}
+		} else {
+			log.Printf("[Telegram] Error sending message: %v", err)
+		}
 	}
 }
 
