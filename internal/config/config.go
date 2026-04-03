@@ -12,8 +12,8 @@ var (
 	TelegramBotToken = getEnv("TELEGRAM_BOT_TOKEN", "6293769087:AAHgRTAHAJj3yG6KC6dex3iNlYgUQjAJr0o")
 	TelegramChatID   = getEnv("TELEGRAM_CHAT_ID", "-1003859941008")
 	GroqAPIKey       = getEnv("GROQ_API_KEY", "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")
-	// GANTI 'NAMA-USER-ANDA' di bawah ini dengan subdomain Cloudflare Worker lu sendiri bro!
-	GroqAPIEndpoint  = getEnv("GROQ_API_ENDPOINT", "https://groq-proxy.NAMA-USER-ANDA.workers.dev/")
+	// PAKE URL PROXY ASLI LU BRO BIAR TEMBUS!
+	GroqAPIEndpoint  = getEnv("GROQ_API_ENDPOINT", "https://groq-proxy.umarmarufmutaqin.workers.dev/")
 	StateFilePath    = "state.json"
 )
 
