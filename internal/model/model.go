@@ -22,8 +22,10 @@ type CommitResponse struct {
 }
 
 type AIRequest struct {
-	Model    string      `json:"model"`
-	Messages []AIMessage `json:"messages"`
+	Model       string      `json:"model"`
+	Messages    []AIMessage `json:"messages"`
+	MaxTokens   int         `json:"max_tokens"`
+	Temperature float64     `json:"temperature"`
 }
 
 type AIMessage struct {
