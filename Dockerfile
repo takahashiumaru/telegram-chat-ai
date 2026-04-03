@@ -1,33 +1,36 @@
-# Build stage
+# ==========================================
+# BUILD STAGE
+# ==========================================
 FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
-# Install git and ca-certificates
+# Install git dan sertifikat keamanan
 RUN apk add --no-cache git ca-certificates
 
-# Copy go mod and sum files
+# Copy go.mod dan go.sum terlebih dahulu untuk caching dependencies
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code
+# Copy seluruh source code
 COPY . .
 
-# Build the application
+# Build aplikasi menjadi binary tunggal (tanpa dependensi C)
 RUN CGO_ENABLED=0 GOOS=linux go build -o telegram-chat-ai main.go
 
-# Final stage
+
+# ==========================================
+# FINAL STAGE (Runner)
+# ==========================================
 FROM alpine:latest
 
 WORKDIR /app
 
-# Install ca-certificates for secure requests
-RUN apk add --no-cache ca-certificates
+# Install sertifikat keamanan dan tzdata untuk sinkronisasi zona waktu
+RUN apk add --no-cache ca-certificates tzdata
 
-# Copy binary from builder
+# Ambil file binary dari tahap build sebelumnya
 COPY --from=builder /app/telegram-chat-ai .
 
-# The app uses a state.json file, we should probably ensure it's handled or at least exists
-# but the app creates it if missing in loadState()
-
+# Eksekusi aplikasi
 CMD ["./telegram-chat-ai"]
