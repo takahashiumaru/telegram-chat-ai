@@ -20,7 +20,7 @@ type AIService struct {
 func NewAIService() *AIService {
 	return &AIService{
 		ApiKey:    config.GroqAPIKey,
-		Endpoint:  "https://api.groq.com/openai/v1/chat/completions",
+		Endpoint:  config.GroqAPIEndpoint,
 		ModelName: "llama-3.3-70b-versatile",
 	}
 }

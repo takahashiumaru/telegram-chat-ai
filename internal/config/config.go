@@ -12,6 +12,7 @@ var (
 	TelegramBotToken = getEnv("TELEGRAM_BOT_TOKEN", "6293769087:AAHgRTAHAJj3yG6KC6dex3iNlYgUQjAJr0o")
 	TelegramChatID   = getEnv("TELEGRAM_CHAT_ID", "-1003859941008")
 	GroqAPIKey       = getEnv("GROQ_API_KEY", "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")
+	GroqAPIEndpoint  = getEnv("GROQ_API_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
 	StateFilePath    = "state.json"
 )
 
